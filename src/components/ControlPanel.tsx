@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Card } from "@/components/ui/card";
-import { Loader2, BarChart3 } from "lucide-react";
+import { Loader2, BarChart3, AlertCircle } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
+import { API_ENDPOINTS } from "@/lib/api";
 
 interface ControlPanelProps {
   onPredict: (data: any) => void;
@@ -25,14 +26,24 @@ export const ControlPanel = ({ onPredict, isLoading, setIsLoading }: ControlPane
 
   const fetchCrimes = async () => {
     try {
-      const response = await axios.get("http://127.0.0.1:5000/crimes");
-      setCrimes(response.data);
-      if (response.data.length > 0) {
+      console.log("Fetching crimes from:", API_ENDPOINTS.crimes);
+      const response = await axios.get(API_ENDPOINTS.crimes);
+      console.log("Crimes response:", response.data);
+      
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        setCrimes(response.data);
         setSelectedCrime(response.data[0]);
+        toast.success(`Loaded ${response.data.length} crime categories`);
+      } else {
+        console.error("Invalid response format:", response.data);
+        toast.error("No crime categories available");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching crimes:", error);
-      toast.error("Failed to load crime categories");
+      const errorMessage = error.response?.data?.message || error.message || "Unknown error";
+      toast.error(`Failed to load crime categories: ${errorMessage}`, {
+        description: "Make sure your Flask backend is running on http://127.0.0.1:5000",
+      });
     }
   };
 
@@ -44,19 +55,26 @@ export const ControlPanel = ({ onPredict, isLoading, setIsLoading }: ControlPane
 
     setIsLoading(true);
     try {
-      const response = await axios.get(
-        `http://127.0.0.1:5000/predict?crime=${encodeURIComponent(selectedCrime)}&year=${selectedYear}`
-      );
+      console.log("Predicting for:", selectedCrime, selectedYear);
+      const predictUrl = API_ENDPOINTS.predict(selectedCrime, selectedYear);
+      console.log("Predict URL:", predictUrl);
+      
+      const response = await axios.get(predictUrl);
+      console.log("Prediction response:", response.data);
+      
       onPredict({
         ...response.data,
         crime: selectedCrime,
         year: selectedYear,
-        graphUrl: `http://127.0.0.1:5000/predict/graph?crime=${encodeURIComponent(selectedCrime)}&year=${selectedYear}`,
+        graphUrl: API_ENDPOINTS.predictGraph(selectedCrime, selectedYear),
       });
       toast.success("Prediction generated successfully!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error predicting:", error);
-      toast.error("Failed to generate prediction");
+      const errorMessage = error.response?.data?.message || error.message || "Unknown error";
+      toast.error(`Failed to generate prediction: ${errorMessage}`, {
+        description: "Check console for details",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -77,18 +95,30 @@ export const ControlPanel = ({ onPredict, isLoading, setIsLoading }: ControlPane
         <div className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Crime Category</label>
-            <Select value={selectedCrime} onValueChange={setSelectedCrime}>
-              <SelectTrigger className="glass-card border-primary/20 hover:border-primary/50 transition-colors">
-                <SelectValue placeholder="Select crime type" />
-              </SelectTrigger>
-              <SelectContent className="glass-card border-primary/20">
-                {crimes.map((crime) => (
-                  <SelectItem key={crime} value={crime}>
-                    {crime}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {crimes.length === 0 ? (
+              <div className="glass-card border-destructive/50 p-4 rounded-md">
+                <div className="flex items-center gap-2 text-destructive">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-sm">Backend not connected</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ensure Flask is running on http://127.0.0.1:5000
+                </p>
+              </div>
+            ) : (
+              <Select value={selectedCrime} onValueChange={setSelectedCrime}>
+                <SelectTrigger className="glass-card border-primary/20 hover:border-primary/50 transition-colors">
+                  <SelectValue placeholder="Select crime type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {crimes.map((crime) => (
+                    <SelectItem key={crime} value={crime}>
+                      {crime}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="space-y-4">
